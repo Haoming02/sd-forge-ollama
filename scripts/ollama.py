@@ -1,16 +1,16 @@
-from gradio.components.multimodal_textbox import MultimodalData
-from gradio.components.chatbot import FileMessage
-from gradio.data_classes import FileData
-from gradio import ChatMessage
-from typing import Generator
-
-from modules.script_callbacks import on_ui_tabs
-
-import gradio as gr
-import subprocess
-import ollama
 import json
 import os
+import subprocess
+from typing import Generator
+
+import gradio as gr
+import ollama
+from gradio import ChatMessage
+from gradio.components.chatbot import FileMessage
+from gradio.components.multimodal_textbox import MultimodalData
+from gradio.data_classes import FileData
+
+from modules.script_callbacks import on_ui_tabs
 
 EXT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
