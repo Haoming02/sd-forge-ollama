@@ -56,10 +56,9 @@ def unload_model(log: bool = True):
             gr.Info(f'Unloaded "{LAST_USED_MODEL}"...')
 
 
-def load_configs() -> tuple[list[str], str, str, str, int]:
+def load_configs() -> tuple[list[str], str, str, int]:
     """Load the local config"""
     all_models: list[str] = list_models()
-    default_tab: str = CONFIG.get("default_tab", "opt")
     default_keep_alive: str = CONFIG.get("keep_alive", "5m")
     default_history_depth: int = CONFIG.get("history_depth", 8)
     default_model: str = CONFIG.get("default_model", None)
@@ -69,14 +68,13 @@ def load_configs() -> tuple[list[str], str, str, str, int]:
         else (default_model if default_model in all_models else all_models[0])
     )
 
-    return (all_models, model, default_tab, default_keep_alive, default_history_depth)
+    return (all_models, model, default_keep_alive, default_history_depth)
 
 
-def save_configs(mdl: str, tab: str, keep: str, depth: float):
+def save_configs(mdl: str, keep: str, depth: float):
     """Save the config to disk"""
     try:
         CONFIG["default_model"] = mdl
-        CONFIG["default_tab"] = tab
         CONFIG["keep_alive"] = keep
         CONFIG["history_depth"] = int(depth)
         with open(CONFIG_PATH, "w", encoding="utf-8") as file:
@@ -213,13 +211,11 @@ def chat(
 
 def ui():
     with gr.Blocks() as OLLAMA:
-        all_models, default_model, default_tab, keep_alive, history_depth = (
-            load_configs()
-        )
+        all_models, default_model, keep_alive, history_depth = load_configs()
 
         _model = gr.State(value=default_model)
 
-        with gr.Tabs(selected=default_tab):
+        with gr.Tabs():
             with gr.Tab(label="Chat", id="chat"):
                 bot = gr.Chatbot(value=[], type="messages")
                 gr.ChatInterface(
@@ -256,14 +252,6 @@ def ui():
                             label="Default Model",
                             choices=all_models,
                             value=default_model,
-                        )
-                        config_default_tab = gr.Radio(
-                            label="Default Tab",
-                            choices=(
-                                ("Options", "opt"),
-                                ("Chat", "chat"),
-                            ),
-                            value=default_tab,
                         )
                         config_keep_alive = gr.Textbox(
                             label="Keep Alive Duration",
@@ -311,7 +299,6 @@ def ui():
             fn=save_configs,
             inputs=[
                 config_default_model,
-                config_default_tab,
                 config_keep_alive,
                 config_history_depth,
             ],
