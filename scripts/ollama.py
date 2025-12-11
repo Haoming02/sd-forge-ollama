@@ -217,7 +217,20 @@ def ui():
             load_configs()
         )
 
+        _model = gr.State(value=default_model)
+
         with gr.Tabs(selected=default_tab):
+            with gr.Tab(label="Chat", id="chat"):
+                bot = gr.Chatbot(value=[], type="messages")
+                gr.ChatInterface(
+                    fn=chat,
+                    type="messages",
+                    chatbot=bot,
+                    multimodal=True,
+                    additional_inputs=[_model],
+                    analytics_enabled=False,
+                )
+
             with gr.Tab(label="Options", id="opt"):
                 with gr.Accordion("Models", open=True):
                     with gr.Row():
@@ -283,16 +296,7 @@ def ui():
                         save_history_btn = gr.Button("Save History")
                         load_history_btn = gr.Button("Load History")
 
-            with gr.Tab(label="Chat", id="chat"):
-                bot = gr.Chatbot(value=[], type="messages")
-                gr.ChatInterface(
-                    fn=chat,
-                    type="messages",
-                    chatbot=bot,
-                    multimodal=True,
-                    additional_inputs=[model],
-                    analytics_enabled=False,
-                )
+        model.change(fn=lambda v: v, inputs=[model], outputs=[_model], queue=False)
 
         unload_btn.click(fn=unload_model)
         pull_btn.click(fn=pull_model, inputs=[mdl_name]).success(
