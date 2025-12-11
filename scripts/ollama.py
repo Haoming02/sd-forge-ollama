@@ -4,16 +4,18 @@ from gradio.data_classes import FileData
 from gradio import ChatMessage
 from typing import Generator
 
+from modules.script_callbacks import on_ui_tabs
+
 import gradio as gr
 import subprocess
 import ollama
 import json
 import os
 
-SPACE: str = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_PATH: str = os.path.join(SPACE, "script.js")
-CONFIG_PATH: str = os.path.join(SPACE, "config.json")
-HISTORY_PATH: str = os.path.join(SPACE, "log")
+EXT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+CONFIG_PATH: str = os.path.join(EXT, "config.json")
+HISTORY_PATH: str = os.path.join(EXT, "log")
 
 # ================ Launch the Ollama Server ================ #
 subprocess.run(["ollama", "list"], stdout=subprocess.DEVNULL)
@@ -25,8 +27,6 @@ LOAD_HISTORY: list[dict] = []
 LAST_USED_MODEL: str = None
 """pass into keep_alive to unload"""
 
-with open(SCRIPT_PATH, "r", encoding="utf-8") as script:
-    JS: str = script.read()
 
 with open(CONFIG_PATH, "r", encoding="utf-8") as config:
     CONFIG: dict = json.load(config)
@@ -211,7 +211,10 @@ def chat(
         yield response
 
 
-with gr.Blocks(analytics_enabled=False, css="../style.css").queue() as block:
+def ui():
+    OLLAMA = gr.Blocks()
+    OLLAMA.__enter__()
+
     all_models, default_model, default_tab, keep_alive, history_depth = load_configs()
 
     with gr.Tabs(selected=default_tab):
@@ -316,10 +319,9 @@ with gr.Blocks(analytics_enabled=False, css="../style.css").queue() as block:
     ).success(fn=lambda: gr.update(choices=list_history()), outputs=[history_path])
     load_history_btn.click(fn=load_history, inputs=[history_path], outputs=[bot])
 
-    block.load(fn=None, js=JS)
-    block.unload(fn=unload_model)
+    OLLAMA.__exit__()
 
-demo = block
+    return [(OLLAMA, "Ollama", "sd-forge-ollama")]
 
-if __name__ == "__main__":
-    demo.launch()
+
+on_ui_tabs(ui)
