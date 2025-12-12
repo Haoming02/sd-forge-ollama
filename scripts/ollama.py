@@ -1,19 +1,22 @@
-from gradio.components.multimodal_textbox import MultimodalData
-from gradio.components.chatbot import FileMessage
-from gradio.data_classes import FileData
-from gradio import ChatMessage
+import json
+import os
+import subprocess
 from typing import Generator
 
 import gradio as gr
-import subprocess
 import ollama
-import json
-import os
+import ollama._types
+from gradio import ChatMessage
+from gradio.components.chatbot import FileMessage
+from gradio.components.multimodal_textbox import MultimodalData
+from gradio.data_classes import FileData
 
-SPACE: str = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_PATH: str = os.path.join(SPACE, "script.js")
-CONFIG_PATH: str = os.path.join(SPACE, "config.json")
-HISTORY_PATH: str = os.path.join(SPACE, "log")
+from modules.script_callbacks import on_ui_tabs
+
+EXT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+CONFIG_PATH: str = os.path.join(EXT, "config.json")
+HISTORY_PATH: str = os.path.join(EXT, "logs")
 
 # ================ Launch the Ollama Server ================ #
 subprocess.run(["ollama", "list"], stdout=subprocess.DEVNULL)
@@ -25,8 +28,6 @@ LOAD_HISTORY: list[dict] = []
 LAST_USED_MODEL: str = None
 """pass into keep_alive to unload"""
 
-with open(SCRIPT_PATH, "r", encoding="utf-8") as script:
-    JS: str = script.read()
 
 with open(CONFIG_PATH, "r", encoding="utf-8") as config:
     CONFIG: dict = json.load(config)
@@ -56,10 +57,9 @@ def unload_model(log: bool = True):
             gr.Info(f'Unloaded "{LAST_USED_MODEL}"...')
 
 
-def load_configs() -> tuple[list[str], str, str, str, int]:
+def load_configs() -> tuple[list[str], str, str, int]:
     """Load the local config"""
     all_models: list[str] = list_models()
-    default_tab: str = CONFIG.get("default_tab", "opt")
     default_keep_alive: str = CONFIG.get("keep_alive", "5m")
     default_history_depth: int = CONFIG.get("history_depth", 8)
     default_model: str = CONFIG.get("default_model", None)
@@ -69,14 +69,13 @@ def load_configs() -> tuple[list[str], str, str, str, int]:
         else (default_model if default_model in all_models else all_models[0])
     )
 
-    return (all_models, model, default_tab, default_keep_alive, default_history_depth)
+    return (all_models, model, default_keep_alive, default_history_depth)
 
 
-def save_configs(mdl: str, tab: str, keep: str, depth: float):
+def save_configs(mdl: str, keep: str, depth: float):
     """Save the config to disk"""
     try:
         CONFIG["default_model"] = mdl
-        CONFIG["default_tab"] = tab
         CONFIG["keep_alive"] = keep
         CONFIG["history_depth"] = int(depth)
         with open(CONFIG_PATH, "w", encoding="utf-8") as file:
@@ -137,7 +136,7 @@ def _handle_file(query: str, file_path: str, file_type: str) -> tuple[str, list[
     if "image" in file_type:
         return (query, [file_path])
 
-    for T in ("json", "yaml", "xml"):
+    for T in ("json", "yaml", "xml", "md"):
         if file_path.endswith(T):
             with open(file_path, "r", encoding="utf-8") as f:
                 data = f.read()
@@ -211,115 +210,121 @@ def chat(
         yield response
 
 
-with gr.Blocks(analytics_enabled=False, css="../style.css").queue() as block:
-    all_models, default_model, default_tab, keep_alive, history_depth = load_configs()
+def ui():
+    with gr.Blocks() as OLLAMA:
+        all_models, default_model, keep_alive, history_depth = load_configs()
 
-    with gr.Tabs(selected=default_tab):
-        with gr.Tab(label="Options", id="opt"):
-            with gr.Accordion("Models", open=True):
-                with gr.Row():
-                    model = gr.Dropdown(
-                        label="Current Model",
-                        value=default_model,
-                        choices=all_models,
-                    )
-                    mdl_name = gr.Textbox(
-                        label="Download new Model",
-                        info='Refer to "https://ollama.com/library" for all available models',
-                        placeholder="gemma2:2b",
-                        max_lines=1,
-                        elem_id="mdl-name",
-                    )
-                with gr.Row():
-                    unload_btn = gr.Button("Unload Current Model to Free Memory")
-                    pull_btn = gr.Button("Download")
+        _model = gr.State(value=default_model)
 
-            with gr.Accordion("Configs", open=True):
-                with gr.Row():
-                    config_default_model = gr.Dropdown(
-                        label="Default Model",
-                        choices=all_models,
-                        value=default_model,
-                    )
-                    config_default_tab = gr.Radio(
-                        label="Default Tab",
-                        choices=(
-                            ("Options", "opt"),
-                            ("Chat", "chat"),
-                        ),
-                        value=default_tab,
-                    )
-                    config_keep_alive = gr.Textbox(
-                        label="Keep Alive Duration",
-                        placeholder="5m",
-                        max_lines=1,
-                        value=keep_alive,
-                        elem_id="mdl-name",
-                    )
-                    config_history_depth = gr.Slider(
-                        label="History Depth",
-                        value=history_depth,
-                        minimum=0,
-                        maximum=32,
-                        step=2,
-                    )
-
-                save_config_btn = gr.Button("Save Configs")
-
-            with gr.Accordion("Chat History", open=True):
-                history_path = gr.Dropdown(
-                    label="Filename to Save",
-                    info="Will be saved to the log folder",
-                    allow_custom_value=True,
-                    multiselect=False,
-                    choices=list_history(),
-                    value=None,
+        with gr.Tabs():
+            with gr.Tab(label="Chat"):
+                bot = gr.Chatbot(value=[], type="messages", show_label=False)
+                gr.ChatInterface(
+                    fn=chat,
+                    type="messages",
+                    chatbot=bot,
+                    multimodal=True,
+                    additional_inputs=[_model],
+                    analytics_enabled=False,
                 )
 
-                with gr.Row():
-                    save_history_btn = gr.Button("Save History")
-                    load_history_btn = gr.Button("Load History")
+            with gr.Tab(label="Options"):
+                with gr.Column():
+                    with gr.Row():
+                        model = gr.Dropdown(
+                            label="Current Model",
+                            info="(not every model supports multimodal)",
+                            value=default_model,
+                            choices=all_models,
+                        )
+                        mdl_name = gr.Textbox(
+                            label="Download new Model",
+                            info='Refer to "https://ollama.com/library" for all available models',
+                            placeholder="gemma2:2b",
+                            max_lines=1,
+                            elem_id="ollama-mdl-dl",
+                        )
+                    with gr.Row():
+                        unload_btn = gr.Button("Unload Current Model to Free Memory")
+                        pull_btn = gr.Button("Download")
 
-        with gr.Tab(label="Chat", id="chat"):
-            bot = gr.Chatbot(value=[], type="messages")
-            gr.ChatInterface(
-                fn=chat,
-                type="messages",
-                chatbot=bot,
-                multimodal=True,
-                additional_inputs=[model],
-                analytics_enabled=False,
-            )
+                with gr.Column():
+                    with gr.Row():
+                        config_default_model = gr.Dropdown(
+                            label="Default Model",
+                            choices=all_models,
+                            value=default_model,
+                        )
+                        config_keep_alive = gr.Textbox(
+                            label="Keep Alive Duration",
+                            placeholder="5m",
+                            max_lines=1,
+                            value=keep_alive,
+                            elem_id="ollama-keepalive",
+                        )
+                        config_history_depth = gr.Slider(
+                            label="History Depth",
+                            info="including both query and reply",
+                            value=history_depth,
+                            minimum=0,
+                            maximum=32,
+                            step=2,
+                        )
 
-    unload_btn.click(fn=unload_model)
-    pull_btn.click(fn=pull_model, inputs=[mdl_name]).success(
-        fn=lambda: [
-            gr.update(choices=list_models()),
-            gr.update(choices=list_models()),
-        ],
-        outputs=[model, config_default_model],
-    )
+                    save_config_btn = gr.Button("Save Configs")
 
-    save_config_btn.click(
-        fn=save_configs,
-        inputs=[
-            config_default_model,
-            config_default_tab,
-            config_keep_alive,
-            config_history_depth,
-        ],
-    )
+                with gr.Column():
+                    history_path = gr.Dropdown(
+                        label="Filename to Save",
+                        info="save into / load from the logs folder",
+                        allow_custom_value=True,
+                        multiselect=False,
+                        choices=list_history(),
+                        value=None,
+                    )
 
-    save_history_btn.click(
-        fn=save_history,
-        inputs=[history_path, bot],
-    ).success(fn=lambda: gr.update(choices=list_history()), outputs=[history_path])
-    load_history_btn.click(fn=load_history, inputs=[history_path], outputs=[bot])
+                    with gr.Row():
+                        save_history_btn = gr.Button("Save History")
+                        load_history_btn = gr.Button("Load History")
 
-    block.load(fn=None, js=JS)
-    block.unload(fn=unload_model)
+        model.change(fn=lambda v: v, inputs=[model], outputs=[_model], queue=False)
 
-demo = block
+        unload_btn.click(fn=unload_model)
+        pull_btn.click(fn=pull_model, inputs=[mdl_name]).success(
+            fn=lambda: [
+                gr.update(choices=list_models()),
+                gr.update(choices=list_models()),
+            ],
+            outputs=[model, config_default_model],
+        )
 
-if __name__ == "__main__":
-    demo.launch()
+        save_config_btn.click(
+            fn=save_configs,
+            inputs=[
+                config_default_model,
+                config_keep_alive,
+                config_history_depth,
+            ],
+        )
+
+        save_history_btn.click(
+            fn=save_history,
+            inputs=[history_path, bot],
+        ).success(fn=lambda: gr.update(choices=list_history()), outputs=[history_path])
+        load_history_btn.click(fn=load_history, inputs=[history_path], outputs=[bot])
+
+    for comp in (
+        bot,
+        model,
+        mdl_name,
+        config_default_model,
+        config_keep_alive,
+        config_history_depth,
+        history_path,
+    ):
+        comp.do_not_save_to_config = True
+
+    return [(OLLAMA, "Ollama", "sd-forge-ollama")]
+
+
+on_ui_tabs(ui)

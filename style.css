@@ -1,12 +1,16 @@
-.gradio-chatbot {
-    min-height: 72vh !important;
+#tab_sd-forge-ollama .gradio-chatbot {
+    min-height: 54vh !important;
 }
 
-footer {
-    display: none !important;
+#tab_sd-forge-ollama div.gradio-column {
+    margin-bottom: 4em;
 }
 
-#mdl-name a {
+#ollama-mdl-dl a {
     color: lightskyblue;
     text-decoration: underline;
+}
+
+#ollama-keepalive {
+    margin-top: 6px;
 }
