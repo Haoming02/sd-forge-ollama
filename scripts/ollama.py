@@ -5,6 +5,7 @@ from typing import Generator
 
 import gradio as gr
 import ollama
+import ollama._types
 from gradio import ChatMessage
 from gradio.components.chatbot import FileMessage
 from gradio.components.multimodal_textbox import MultimodalData
@@ -15,7 +16,7 @@ from modules.script_callbacks import on_ui_tabs
 EXT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CONFIG_PATH: str = os.path.join(EXT, "config.json")
-HISTORY_PATH: str = os.path.join(EXT, "log")
+HISTORY_PATH: str = os.path.join(EXT, "logs")
 
 # ================ Launch the Ollama Server ================ #
 subprocess.run(["ollama", "list"], stdout=subprocess.DEVNULL)
@@ -135,7 +136,7 @@ def _handle_file(query: str, file_path: str, file_type: str) -> tuple[str, list[
     if "image" in file_type:
         return (query, [file_path])
 
-    for T in ("json", "yaml", "xml"):
+    for T in ("json", "yaml", "xml", "md"):
         if file_path.endswith(T):
             with open(file_path, "r", encoding="utf-8") as f:
                 data = f.read()
@@ -216,8 +217,8 @@ def ui():
         _model = gr.State(value=default_model)
 
         with gr.Tabs():
-            with gr.Tab(label="Chat", id="chat"):
-                bot = gr.Chatbot(value=[], type="messages")
+            with gr.Tab(label="Chat"):
+                bot = gr.Chatbot(value=[], type="messages", show_label=False)
                 gr.ChatInterface(
                     fn=chat,
                     type="messages",
@@ -227,11 +228,12 @@ def ui():
                     analytics_enabled=False,
                 )
 
-            with gr.Tab(label="Options", id="opt"):
-                with gr.Accordion("Models", open=True):
+            with gr.Tab(label="Options"):
+                with gr.Column():
                     with gr.Row():
                         model = gr.Dropdown(
                             label="Current Model",
+                            info="(not every model supports multimodal)",
                             value=default_model,
                             choices=all_models,
                         )
@@ -240,13 +242,13 @@ def ui():
                             info='Refer to "https://ollama.com/library" for all available models',
                             placeholder="gemma2:2b",
                             max_lines=1,
-                            elem_id="mdl-name",
+                            elem_id="ollama-mdl-dl",
                         )
                     with gr.Row():
                         unload_btn = gr.Button("Unload Current Model to Free Memory")
                         pull_btn = gr.Button("Download")
 
-                with gr.Accordion("Configs", open=True):
+                with gr.Column():
                     with gr.Row():
                         config_default_model = gr.Dropdown(
                             label="Default Model",
@@ -258,10 +260,11 @@ def ui():
                             placeholder="5m",
                             max_lines=1,
                             value=keep_alive,
-                            elem_id="mdl-name",
+                            elem_id="ollama-keepalive",
                         )
                         config_history_depth = gr.Slider(
                             label="History Depth",
+                            info="including both query and reply",
                             value=history_depth,
                             minimum=0,
                             maximum=32,
@@ -270,10 +273,10 @@ def ui():
 
                     save_config_btn = gr.Button("Save Configs")
 
-                with gr.Accordion("Chat History", open=True):
+                with gr.Column():
                     history_path = gr.Dropdown(
                         label="Filename to Save",
-                        info="Will be saved to the log folder",
+                        info="save into / load from the logs folder",
                         allow_custom_value=True,
                         multiselect=False,
                         choices=list_history(),
@@ -309,6 +312,17 @@ def ui():
             inputs=[history_path, bot],
         ).success(fn=lambda: gr.update(choices=list_history()), outputs=[history_path])
         load_history_btn.click(fn=load_history, inputs=[history_path], outputs=[bot])
+
+    for comp in (
+        bot,
+        model,
+        mdl_name,
+        config_default_model,
+        config_keep_alive,
+        config_history_depth,
+        history_path,
+    ):
+        comp.do_not_save_to_config = True
 
     return [(OLLAMA, "Ollama", "sd-forge-ollama")]
 

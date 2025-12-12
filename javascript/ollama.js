@@ -1,7 +1,7 @@
 (function () {
     onUiLoaded(() => {
-        const box = document.getElementById("mdl-name");
+        const box = document.getElementById("ollama-mdl-dl");
         box.querySelector("label").querySelector("div").innerHTML =
-            'Refer to the <a class="link" href="https://ollama.com/library">Library</a> for all available models';
+            'refer to the <a href="https://ollama.com/library">Library</a> for available models';
     });
 })();
